@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="J.A.R.V.I.S.">
+<meta name="theme-color" content="#000000">
+<title>J.A.R.V.I.S.</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; color: #fff; touch-action: manipulation; }
+  .jarvis-container { width: 100%; height: 100%; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; overflow: hidden; }
+  .scan-overlay { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,0.04) 2px, rgba(0,229,255,0.04) 4px); z-index: 1; opacity: 0.6; }
+  .hex-grid { position: absolute; inset: 0; pointer-events: none; z-index: 1; opacity: 0.06; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3E%3Cpath fill='none' stroke='%2300e5ff' stroke-width='0.5' d='M14 0L28 8.5v16L14 33 0 24.5v-16z'/%3E%3C/svg%3E"); }
+  .hud-ring { position: absolute; border: 1.5px solid rgba(0,229,255,0.25); border-radius: 50%; pointer-events: none; z-index: 2; }
+  .hud-ring-1 { width: 180px; height: 180px; animation: spin 20s linear infinite; }
+  .hud-ring-2 { width: 240px; height: 240px; border-style: dashed; animation: spin 30s linear infinite reverse; }
+  .hud-ring-3 { width: 300px; height: 300px; border: 1px solid rgba(0,229,255,0.08); animation: pulse-ring 4s ease-in-out infinite; }
+  .hud-ring-4 { width: 360px; height: 360px; border: 0.5px solid rgba(0,229,255,0.06); animation: spin 60s linear infinite; }
+  .core-orb { position: relative; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle at 40% 40%, #00e5ff, rgba(0,229,255,0.3) 40%, transparent 70%); box-shadow: 0 0 40px rgba(0,229,255,0.4), 0 0 80px rgba(0,229,255,0.15); z-index: 10; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.3s ease-out, box-shadow 0.3s ease-out; -webkit-user-select: none; user-select: none; }
+  .core-orb:active, .core-orb.active-tap { transform: scale(0.92); box-shadow: 0 0 80px rgba(0,229,255,0.6), 0 0 160px rgba(0,229,255,0.2); }
+  .core-orb.listening { animation: core-pulse 1.2s ease-in-out infinite; box-shadow: 0 0 60px rgba(0,229,255,0.4), 0 0 120px rgba(0,229,255,0.15); }
+  .core-orb.processing { animation: core-spin 2s linear infinite; }
+  .core-orb.speaking-glow { animation: speak-glow 0.6s ease-in-out infinite alternate; }
+  .core-inner { width: 60px; height: 60px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff, #00e5ff 50%, transparent 70%); opacity: 0.9; pointer-events: none; }
+  .waveform { position: absolute; display: flex; align-items: center; gap: 3px; height: 40px; z-index: 5; opacity: 0; transition: opacity 0.4s ease-out; }
+  .waveform.active { opacity: 1; }
+  .wave-bar { width: 3px; background: #00e5ff; border-radius: 2px; animation: wave 0.8s ease-in-out infinite alternate; }
+  .wave-bar:nth-child(1) { height: 8px; animation-delay: 0s; }
+  .wave-bar:nth-child(2) { height: 16px; animation-delay: 0.1s; }
+  .wave-bar:nth-child(3) { height: 24px; animation-delay: 0.2s; }
+  .wave-bar:nth-child(4) { height: 32px; animation-delay: 0.3s; }
+  .wave-bar:nth-child(5) { height: 24px; animation-delay: 0.4s; }
+  .wave-bar:nth-child(6) { height: 16px; animation-delay: 0.5s; }
+  .wave-bar:nth-child(7) { height: 8px; animation-delay: 0.6s; }
+  .audio-rings { position: absolute; z-index: 9; pointer-events: none; width: 120px; height: 120px; border-radius: 50%; }
+  .audio-ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(0,229,255,0.6); opacity: 0; transform: scale(0.8); }
+  .audio-ring.active { animation: audio-ping 0.8s ease-out forwards; }
+  .status-text { position: absolute; bottom: 100px; font-family: 'SF Mono', monospace; font-size: 13px; color: #00e5ff; letter-spacing: 3px; text-transform: uppercase; z-index: 10; text-align: center; min-height: 20px; opacity: 0.9; }
+  .status-text::after { content: ''; display: inline-block; width: 8px; height: 8px; background: #00e5ff; border-radius: 50%; margin-left: 8px; animation: blink 1s step-end infinite; vertical-align: middle; }
+  .status-text.listening::after { animation: blink 0.4s step-end infinite; }
+  .status-text.processing::after { animation: none; background: #f5a623; }
+  .status-text.speaking::after { animation: blink 0.6s step-end infinite; background: #34c759; }
+  .transcript-box { position: absolute; bottom: 28px; left: 24px; right: 24px; font-family: 'SF Mono', monospace; font-size: 12px; color: rgba(255,255,255,0.5); line-height: 1.5; z-index: 10; text-align: center; min-height: 40px; opacity: 0.7; transition: opacity 0.3s ease-out; }
+  .transcript-box.has-text { opacity: 1; color: #fff; }
+  .transcript-box .label { color: #00e5ff; opacity: 0.5; font-size: 10px; letter-spacing: 2px; margin-bottom: 4px; }
+  .corner-mark { position: absolute; width: 20px; height: 20px; border: 1.5px solid rgba(0,229,255,0.25); z-index: 3; pointer-events: none; }
+  .corner-tl { top: 16px; left: 16px; border-right: none; border-bottom: none; }
+  .corner-tr { top: 16px; right: 16px; border-left: none; border-bottom: none; }
+  .corner-bl { bottom: 16px; left: 16px; border-right: none; border-top: none; }
+  .corner-br { bottom: 16px; right: 16px; border-left: none; border-top: none; }
+  .top-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; z-index: 10; }
+  .top-bar .line { width: 60px; height: 1px; background: linear-gradient(90deg, transparent, rgba(0,229,255,0.25), transparent); }
+  .top-bar .title { font-family: 'SF Mono', monospace; font-size: 11px; color: #00e5ff; letter-spacing: 4px; opacity: 0.7; }
+  .side-data { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 3; font-family: 'SF Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.3); text-align: right; letter-spacing: 1px; opacity: 0.5; }
+  .side-data .row { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .side-data .bar { width: 30px; height: 2px; background: rgba(0,229,255,0.08); border-radius: 1px; overflow: hidden; }
+  .side-data .bar-fill { height: 100%; background: #00e5ff; width: 0%; transition: width 0.5s ease-out; }
+  .mic-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: 'SF Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: 2px; z-index: 11; pointer-events: none; opacity: 0; transition: opacity 0.3s; margin-top: 90px; }
+  .mic-hint.visible { opacity: 1; }
+  .response-bubble { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); max-width: 280px; padding: 12px 16px; background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.25); border-radius: 10px; font-family: 'SF Mono', monospace; font-size: 13px; color: #00e5ff; line-height: 1.5; z-index: 12; opacity: 0; transition: opacity 0.4s ease-out, transform 0.4s ease-out; pointer-events: none; letter-spacing: 0.5px; }
+  .response-bubble.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .response-bubble.hidden { transform: translateX(-50%) translateY(-10px); }
+  .response-bubble .cursor { display: inline-block; width: 6px; height: 14px; background: #00e5ff; margin-left: 2px; animation: blink 0.8s step-end infinite; vertical-align: middle; }
+  .particles { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
+  .particle { position: absolute; width: 2px; height: 2px; background: #00e5ff; border-radius: 50%; opacity: 0; animation: particle-float 6s linear infinite; }
+  .shortcuts-panel { position: absolute; top: 50px; right: 16px; z-index: 15; display: flex; flex-direction: column; gap: 6px; opacity: 0; transition: opacity 0.3s ease-out; pointer-events: none; max-height: 70vh; overflow-y: auto; }
+  .shortcuts-panel.visible { opacity: 1; pointer-events: auto; }
+  .shortcut-btn { background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.25); border-radius: 8px; padding: 8px 12px; font-family: 'SF Mono', monospace; font-size: 10px; color: #00e5ff; letter-spacing: 1px; cursor: pointer; transition: all 0.2s ease-out; text-align: left; min-width: 140px; -webkit-user-select: none; user-select: none; }
+  .shortcut-btn:active { background: rgba(0,229,255,0.15); border-color: rgba(0,229,255,0.5); }
+  .shortcut-btn .sub { font-size: 9px; color: rgba(255,255,255,0.4); display: block; margin-top: 2px; }
+  .panel-toggle { position: absolute; top: 16px; right: 16px; z-index: 16; width: 32px; height: 32px; background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.25); border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; color: #00e5ff; transition: all 0.2s ease-out; -webkit-user-select: none; user-select: none; }
+  .panel-toggle:active { background: rgba(0,229,255,0.15); }
+  .reminder-panel { position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); z-index: 14; display: flex; flex-direction: column; gap: 6px; opacity: 0; transition: opacity 0.3s ease-out; pointer-events: none; width: 280px; }
+  .reminder-panel.visible { opacity: 1; pointer-events: auto; }
+  .reminder-item { background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.2); border-radius: 8px; padding: 8px 12px; font-family: 'SF Mono', monospace; font-size: 11px; color: #00e5ff; display: flex; justify-content: space-between; align-items: center; }
+  .reminder-item .time { color: rgba(255,255,255,0.5); font-size: 10px; }
+  .reminder-item .delete-btn { color: #ff453a; font-size: 14px; cursor: pointer; padding: 0 4px; }
+  .reminder-empty { text-align: center; color: rgba(255,255,255,0.3); font-size: 11px; padding: 8px; }
+  .reminder-toggle { position: absolute; top: 16px; left: 16px; z-index: 16; width: 32px; height: 32px; background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.25); border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; color: #00e5ff; transition: all 0.2s ease-out; -webkit-user-select: none; user-select: none; }
+  .reminder-toggle:active { background: rgba(0,229,255,0.15); }
+  .reminder-badge { position: absolute; top: -4px; right: -4px; width: 14px; height: 14px; background: #ff453a; border-radius: 50%; font-size: 9px; display: flex; align-items: center; justify-content: center; color: #fff; opacity: 0; transition: opacity 0.2s; }
+  .reminder-badge.visible { opacity: 1; }
+  .countdown-display { position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); font-family: 'SF Mono', monospace; font-size: 24px; color: #00e5ff; letter-spacing: 2px; z-index: 13; opacity: 0; transition: opacity 0.3s ease-out; text-align: center; }
+  .countdown-display.visible { opacity: 1; }
+  .countdown-display .label { font-size: 10px; color: rgba(255,255,255,0.4); letter-spacing: 3px; margin-bottom: 4px; }
+  .boot-sequence { position: absolute; inset: 0; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'SF Mono', monospace; font-size: 11px; color: #00e5ff; letter-spacing: 2px; opacity: 1; transition: opacity 0.8s ease-out; }
+  .boot-sequence.done { opacity: 0; pointer-events: none; }
+  .boot-line { margin: 4px 0; opacity: 0; animation: boot-fade 0.3s ease-out forwards; }
+  @keyframes boot-fade { 0% { opacity: 0; transform: translateY(4px); } 100% { opacity: 1; transform: translateY(0); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse-ring { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.5; } }
+  @keyframes core-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+  @keyframes core-spin { to { transform: rotate(360deg); } }
+  @keyframes wave { 0% { transform: scaleY(0.3); opacity: 0.4; } 100% { transform: scaleY(1); opacity: 1; } }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+  @keyframes particle-float { 0% { opacity: 0; transform: translateY(100%) translateX(0); } 10% { opacity: 0.6; } 90% { opacity: 0.6; } 100% { opacity: 0; transform: translateY(-20%) translateX(40px); } }
+  @keyframes alert-pulse { 0%,100% { box-shadow: 0 0 40px rgba(255,69,58,0.4); } 50% { box-shadow: 0 0 80px rgba(255,69,58,0.8); } }
+  @keyframes speak-glow { 0% { box-shadow: 0 0 40px rgba(0,229,255,0.4); } 100% { box-shadow: 0 0 80px rgba(0,229,255,0.8), 0 0 120px rgba(0,229,255,0.3); } }
+  @keyframes audio-ping { 0% { opacity: 0.8; transform: scale(0.8); } 100% { opacity: 0; transform: scale(2.5); } }
+  .alert-mode .core-orb { animation: alert-pulse 0.8s ease-in-out infinite !important; background: radial-gradient(circle at 40% 40%, #ff453a, rgba(255,69,58,0.3) 40%, transparent 70%) !important; }
+  .alert-mode .status-text { color: #ff453a !important; }
+  .alert-mode .status-text::after { background: #ff453a !important; }
+
+  /* Notification reader panel */
+  .notif-toggle { position: absolute; top: 16px; left: 56px; z-index: 16; width: 32px; height: 32px; background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.25); border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; color: #00e5ff; transition: all 0.2s ease-out; -webkit-user-select: none; user-select: none; }
+  .notif-toggle:active { background: rgba(0,229,255,0.15); }
+  .notif-panel { position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); z-index: 14; display: flex; flex-direction: column; gap: 8px; opacity: 0; transition: opacity 0.3s ease-out; pointer-events: none; width: 300px; }
+  .notif-panel.visible { opacity: 1; pointer-events: auto; }
+  .notif-input { background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.25); border-radius: 8px; padding: 10px 12px; font-family: 'SF Mono', monospace; font-size: 12px; color: #fff; outline: none; width: 100%; }
+  .notif-input::placeholder { color: rgba(255,255,255,0.3); }
+  .notif-btn { background: rgba(0,229,255,0.15); border: 1px solid rgba(0,229,255,0.4); border-radius: 8px; padding: 8px; font-family: 'SF Mono', monospace; font-size: 11px; color: #00e5ff; cursor: pointer; text-align: center; -webkit-user-select: none; user-select: none; }
+  .notif-btn:active { background: rgba(0,229,255,0.25); }
+  .notif-presets { display: flex; flex-wrap: wrap; gap: 4px; }
+  .notif-preset { background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.15); border-radius: 6px; padding: 4px 8px; font-family: 'SF Mono', monospace; font-size: 9px; color: rgba(0,229,255,0.7); cursor: pointer; }
+  .notif-preset:active { background: rgba(0,229,255,0.12); }
+</style>
+</head>
+<body>
+<div class="jarvis-container" id="jarvis">
+  <div class="boot-sequence" id="boot-sequence">
+    <div class="boot-line" style="animation-delay:0.1s">INITIALIZING J.A.R.V.I.S. NEURAL INTERFACE...</div>
+    <div class="boot-line" style="animation-delay:0.4s">LOADING HUD GEOMETRY...</div>
+    <div class="boot-line" style="animation-delay:0.7s">CALIBRATING VOICE RECOGNITION...</div>
+    <div class="boot-line" style="animation-delay:1.0s">SYSTEMS ONLINE.</div>
+  </div>
+  <div class="hex-grid"></div>
+  <div class="scan-overlay"></div>
+  <div class="particles" id="particles"></div>
+  <div class="top-bar"><div class="line"></div><div class="title">J.A.R.V.I.S.</div><div class="line"></div></div>
+
+  <div class="reminder-toggle" id="reminder-toggle">&#9200;<div class="reminder-badge" id="reminder-badge">0</div></div>
+  <div class="reminder-panel" id="reminder-panel"><div class="reminder-empty">No active reminders</div></div>
+
+  <div class="notif-toggle" id="notif-toggle">&#128225;</div>
+  <div class="notif-panel" id="notif-panel">
+    <div style="font-family:'SF Mono',monospace;font-size:10px;color:#00e5ff;letter-spacing:2px;text-align:center;">NOTIFICATION READER</div>
+    <input type="text" class="notif-input" id="notif-input" placeholder="Paste message here...">
+    <div class="notif-presets">
+      <span class="notif-preset" onclick="readNotif('Text from Mom: Call me when you can')">Text</span>
+      <span class="notif-preset" onclick="readNotif('Chase: $45.67 spent at GROCERY STORE')">Purchase</span>
+      <span class="notif-preset" onclick="readNotif('PRIORITY: Meeting in 10 minutes')">Priority</span>
+      <span class="notif-preset" onclick="readNotif('Uber: Your driver has arrived')">Uber</span>
+    </div>
+    <button class="notif-btn" onclick="readNotifFromInput()">READ NOTIFICATION</button>
+  </div>
+
+  <div class="panel-toggle" id="panel-toggle">&#9881;</div>
+  <div class="shortcuts-panel" id="shortcuts-panel">
+    <button class="shortcut-btn" onclick="openApp('sms')">&#9993; TEXT<span class="sub">Opens Messages</span></button>
+    <button class="shortcut-btn" onclick="openApp('tel')">&#9743; CALL<span class="sub">Opens Phone</span></button>
+    <button class="shortcut-btn" onclick="openApp('mailto')">&#9993; EMAIL<span class="sub">Opens Mail</span></button>
+    <button class="shortcut-btn" onclick="openApp('facetime')">&#128247; FACETIME<span class="sub">Opens FaceTime</span></button>
+    <button class="shortcut-btn" onclick="openApp('maps')">&#128205; MAPS<span class="sub">Opens Apple Maps</span></button>
+    <button class="shortcut-btn" onclick="openApp('music')">&#127925; MUSIC<span class="sub">Opens Apple Music</span></button>
+    <button class="shortcut-btn" onclick="openApp('photos')">&#128248; PHOTOS<span class="sub">Opens Photos</span></button>
+    <button class="shortcut-btn" onclick="openApp('settings')">&#9881; SETTINGS<span class="sub">Opens Settings</span></button>
+    <button class="shortcut-btn" onclick="openApp('shortcuts')">&#9889; SHORTCUTS<span class="sub">Opens Shortcuts app</span></button>
+    <button class="shortcut-btn" onclick="openApp('reminders')">&#9200; REMINDERS<span class="sub">Opens iOS Reminders</span></button>
+    <button class="shortcut-btn" onclick="openApp('clock')">&#9201; CLOCK<span class="sub">Opens Clock/Alarm</span></button>
+  </div>
+
+  <div class="corner-mark corner-tl"></div><div class="corner-mark corner-tr"></div><div class="corner-mark corner-bl"></div><div class="corner-mark corner-br"></div>
+  <div class="side-data">
+    <div class="row"><span>CPU</span><div class="bar"><div class="bar-fill" id="cpu-bar"></div></div></div>
+    <div class="row"><span>MEM</span><div class="bar"><div class="bar-fill" id="mem-bar"></div></div></div>
+    <div class="row"><span>NET</span><div class="bar"><div class="bar-fill" id="net-bar"></div></div></div>
+  </div>
+  <div class="hud-ring hud-ring-4"></div><div class="hud-ring hud-ring-3"></div><div class="hud-ring hud-ring-2"></div><div class="hud-ring hud-ring-1"></div>
+  <div class="waveform" id="waveform"><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div></div>
+  <div class="audio-rings" id="audio-rings"><div class="audio-ring" id="ar1"></div><div class="audio-ring" id="ar2"></div><div class="audio-ring" id="ar3"></div></div>
+  <div class="core-orb" id="core" role="button" aria-label="Tap to speak"><div class="core-inner"></div></div>
+  <div class="mic-hint" id="mic-hint">TAP TO SPEAK</div>
+  <div class="countdown-display" id="countdown-display"><div class="label">NEXT REMINDER</div><div id="countdown-text">--:--:--</div></div>
+  <div class="response-bubble hidden" id="response-bubble"></div>
+  <div class="status-text" id="status">STANDBY</div>
+  <div class="transcript-box" id="transcript"><div class="label">TRANSCRIPT</div><div id="transcript-text">Waiting for input...</div></div>
+</div>
+
+<script>
+(function() {
+  const core = document.getElementById('core');
+  const status = document.getElementById('status');
+  const transcriptText = document.getElementById('transcript-text');
+  const transcriptBox = document.getElementById('transcript');
+  const waveform = document.getElementById('waveform');
+  const micHint = document.getElementById('mic-hint');
+  const responseBubble = document.getElementById('response-bubble');
+  const cpuBar = document.getElementById('cpu-bar');
+  const memBar = document.getElementById('mem-bar');
+  const netBar = document.getElementById('net-bar');
+  const panelToggle = document.getElementById('panel-toggle');
+  const shortcutsPanel = document.getElementById('shortcuts-panel');
+  const reminderToggle = document.getElementById('reminder-toggle');
+  const reminderPanel = document.getElementById('reminder-panel');
+  const reminderBadge = document.getElementById('reminder-badge');
+  const countdownDisplay = document.getElementById('countdown-display');
+  const countdownText = document.getElementById('countdown-text');
+  const jarvis = document.getElementById('jarvis');
+  const bootSequence = document.getElementById('boot-sequence');
+  const audioRings = document.getElementById('audio-rings');
+  const notifToggle = document.getElementById('notif-toggle');
+  const notifPanel = document.getElementById('notif-panel');
+  const notifInput = document.getElementById('notif-input');
+
+  function playBootTone() {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
+      osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.4);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
+    } catch(e) {}
+  }
+
+  function triggerAudioPing() {
+    const rings = audioRings.querySelectorAll('.audio-ring');
+    rings.forEach((ring, i) => {
+      setTimeout(() => {
+        ring.classList.remove('active');
+        void ring.offsetWidth;
+        ring.classList.add('active');
+      }, i * 200);
+    });
+  }
+
+  setTimeout(() => { playBootTone(); }, 300);
+  setTimeout(() => {
+    bootSequence.classList.add('done');
+    setTimeout(() => { bootSequence.style.display = 'none'; }, 800);
+    if (!isListening && !isSpeaking) {
+      speak('Welcome home, sir. J.A.R.V.I.S. is online and at your service.');
+    }
+  }, 1800);
+
+  // Notification reader
+  window.readNotif = function(text) {
+    notifPanel.classList.remove('visible');
+    const prefix = 'Incoming notification, sir. ';
+    speak(prefix + text);
+  };
+  window.readNotifFromInput = function() {
+    const text = notifInput.value.trim();
+    if (text) {
+      readNotif(text);
+      notifInput.value = '';
+    }
+  };
+
+  notifToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    notifPanel.classList.toggle('visible');
+    shortcutsPanel.classList.remove('visible');
+    reminderPanel.classList.remove('visible');
+  });
+
+  let reminders = [];
+  let alertedReminders = new Set();
+
+  function loadReminders() {
+    try { const saved = localStorage.getItem('jarvis_reminders'); if (saved) reminders = JSON.parse(saved); } catch(e) {}
+    updateReminderPanel();
+  }
+  function saveReminders() {
+    try { localStorage.setItem('jarvis_reminders', JSON.stringify(reminders)); } catch(e) {}
+    updateReminderPanel();
+  }
+
+  function addReminder(text, timeStr) {
+    const now = new Date();
+    let targetTime = null;
+    const inMatch = timeStr.match(/in\s+(\d+)\s+(minute|hour|second|min|hr|sec)s?/i);
+    if (inMatch) {
+      const amount = parseInt(inMatch[1]);
+      const unit = inMatch[2].toLowerCase();
+      targetTime = new Date(now);
+      if (unit.startsWith('min')) targetTime.setMinutes(targetTime.getMinutes() + amount);
+      else if (unit.startsWith('hr')) targetTime.setHours(targetTime.getHours() + amount);
+      else if (unit.startsWith('sec')) targetTime.setSeconds(targetTime.getSeconds() + amount);
+    } else if (timeStr.match(/at\s+/i)) {
+      const timePart = timeStr.replace(/at\s+/i, '').trim();
+      targetTime = parseTimeString(timePart, now);
+    } else if (timeStr.match(/from\s+now/i)) {
+      const fromMatch = timeStr.match(/(\d+)\s+(minute|hour|second|min|hr|sec)s?\s+from\s+now/i);
+      if (fromMatch) {
+        const amount = parseInt(fromMatch[1]);
+        const unit = fromMatch[2].toLowerCase();
+        targetTime = new Date(now);
+        if (unit.startsWith('min')) targetTime.setMinutes(targetTime.getMinutes() + amount);
+        else if (unit.startsWith('hr')) targetTime.setHours(targetTime.getHours() + amount);
+        else if (unit.startsWith('sec')) targetTime.setSeconds(targetTime.getSeconds() + amount);
+      }
+    } else {
+      targetTime = parseTimeString(timeStr, now);
+    }
+    if (targetTime && targetTime > now) {
+      const reminder = { id: Date.now(), text: text, time: targetTime.toISOString(), alerted: false };
+      reminders.push(reminder);
+      reminders.sort((a,b) => new Date(a.time) - new Date(b.time));
+      saveReminders();
+      return reminder;
+    }
+    return null;
+  }
+
+  function parseTimeString(str, baseDate) {
+    str = str.trim().toLowerCase();
+    const now = new Date(baseDate);
+    const pmMatch = str.match(/(\d{1,2}):?(\d{2})?\s*pm/);
+    if (pmMatch) {
+      const hour = parseInt(pmMatch[1]);
+      const min = pmMatch[2] ? parseInt(pmMatch[2]) : 0;
+      const t = new Date(now);
+      t.setHours(hour === 12 ? 12 : hour + 12, min, 0, 0);
+      if (t <= now) t.setDate(t.getDate() + 1);
+      return t;
+    }
+    const amMatch = str.match(/(\d{1,2}):?(\d{2})?\s*am/);
+    if (amMatch) {
+      const hour = parseInt(amMatch[1]);
+      const min = amMatch[2] ? parseInt(amMatch[2]) : 0;
+      const t = new Date(now);
+      t.setHours(hour === 12 ? 0 : hour, min, 0, 0);
+      if (t <= now) t.setDate(t.getDate() + 1);
+      return t;
+    }
+    const hr24Match = str.match(/(\d{1,2}):(\d{2})/);
+    if (hr24Match) {
+      const hour = parseInt(hr24Match[1]);
+      const min = parseInt(hr24Match[2]);
+      const t = new Date(now);
+      t.setHours(hour, min, 0, 0);
+      if (t <= now) t.setDate(t.getDate() + 1);
+      return t;
+    }
+    return null;
+  }
+
+  window.deleteReminder = function(id) {
+    reminders = reminders.filter(r => r.id !== id);
+    alertedReminders.delete(id);
+    saveReminders();
+  };
+
+  function updateReminderPanel() {
+    const now = new Date();
+    const active = reminders.filter(r => new Date(r.time) > now);
+    reminderBadge.textContent = active.length;
+    reminderBadge.classList.toggle('visible', active.length > 0);
+    if (active.length === 0) {
+      reminderPanel.innerHTML = '<div class="reminder-empty">No active reminders</div>';
+    } else {
+      reminderPanel.innerHTML = active.map(r => {
+        const t = new Date(r.time);
+        const timeStr = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return '<div class="reminder-item"><span>' + r.text + ' <span class="time">' + timeStr + '</span></span><span class="delete-btn" onclick="deleteReminder(' + r.id + ')">&#10005;</span></div>';
+      }).join('');
+    }
+    if (active.length > 0) { countdownDisplay.classList.add('visible'); } else { countdownDisplay.classList.remove('visible'); }
+  }
+
+  setInterval(() => {
+    const now = new Date();
+    reminders.forEach(r => {
+      const t = new Date(r.time);
+      const diff = t - now;
+      if (diff <= 60000 && diff > 0 && !alertedReminders.has(r.id + '_1min')) {
+        alertedReminders.add(r.id + '_1min');
+        speak('Pardon the interruption, sir. Reminder: "' + r.text + '" in one minute.');
+        jarvis.classList.add('alert-mode');
+        setTimeout(() => jarvis.classList.remove('alert-mode'), 5000);
+      }
+      if (diff <= 0 && diff > -5000 && !alertedReminders.has(r.id + '_due')) {
+        alertedReminders.add(r.id + '_due');
+        speak('Sir. Reminder now due: ' + r.text + '.');
+        jarvis.classList.add('alert-mode');
+        setTimeout(() => jarvis.classList.remove('alert-mode'), 8000);
+      }
+    });
+    const active = reminders.filter(r => new Date(r.time) > now);
+    if (active.length > 0) {
+      const next = active[0];
+      const diff = new Date(next.time) - now;
+      const hrs = Math.floor(diff / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      countdownText.textContent = String(hrs).padStart(2,'0') + ':' + String(mins).padStart(2,'0') + ':' + String(secs).padStart(2,'0');
+    }
+    reminders = reminders.filter(r => {
+      const t = new Date(r.time);
+      return t > now || (now - t) < 300000;
+    });
+    updateReminderPanel();
+  }, 1000);
+
+  loadReminders();
+
+  panelToggle.addEventListener('click', (e) => { e.stopPropagation(); shortcutsPanel.classList.toggle('visible'); reminderPanel.classList.remove('visible'); notifPanel.classList.remove('visible'); });
+  reminderToggle.addEventListener('click', (e) => { e.stopPropagation(); reminderPanel.classList.toggle('visible'); shortcutsPanel.classList.remove('visible'); notifPanel.classList.remove('visible'); });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.shortcuts-panel') && !e.target.closest('.panel-toggle')) shortcutsPanel.classList.remove('visible');
+    if (!e.target.closest('.reminder-panel') && !e.target.closest('.reminder-toggle')) reminderPanel.classList.remove('visible');
+    if (!e.target.closest('.notif-panel') && !e.target.closest('.notif-toggle')) notifPanel.classList.remove('visible');
+  });
+
+  const particlesContainer = document.getElementById('particles');
+  for (let i = 0; i < 20; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.animationDelay = Math.random() * 6 + 's';
+    p.style.animationDuration = (4 + Math.random() * 4) + 's';
+    particlesContainer.appendChild(p);
+  }
+
+  function updateMetrics() {
+    cpuBar.style.width = (30 + Math.random() * 50) + '%';
+    memBar.style.width = (20 + Math.random() * 60) + '%';
+    netBar.style.width = (10 + Math.random() * 40) + '%';
+  }
+  setInterval(updateMetrics, 800);
+  updateMetrics();
+
+  window.openApp = function(type) {
+    let url = '', msg = '';
+    switch(type) {
+      case 'sms': url = 'sms:'; msg = 'Opening Messages, sir.'; break;
+      case 'tel': url = 'tel:'; msg = 'Opening Phone, sir.'; break;
+      case 'mailto': url = 'mailto:'; msg = 'Opening Mail, sir.'; break;
+      case 'facetime': url = 'facetime:'; msg = 'Opening FaceTime, sir.'; break;
+      case 'maps': url = 'maps:'; msg = 'Opening Maps, sir.'; break;
+      case 'music': url = 'music:'; msg = 'Opening Music, sir.'; break;
+      case 'photos': url = 'photos-redirect:'; msg = 'Opening Photos, sir.'; break;
+      case 'settings': url = 'app-settings:'; msg = 'Opening Settings, sir.'; break;
+      case 'shortcuts': url = 'shortcuts://'; msg = 'Opening Shortcuts, sir.'; break;
+      case 'reminders': url = 'x-apple-reminderkit://'; msg = 'Opening Reminders, sir.'; break;
+      case 'clock': url = 'clock-worldclock://'; msg = 'Opening Clock, sir.'; break;
+    }
+    if (url) { speak(msg); setTimeout(() => { window.location.href = url; }, 1500); }
+    shortcutsPanel.classList.remove('visible');
+  };
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null;
+  let isListening = false;
+  let isSpeaking = false;
+
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      isListening = true;
+      core.classList.add('listening');
+      status.classList.add('listening');
+      waveform.classList.add('active');
+      status.textContent = 'LISTENING';
+      micHint.classList.remove('visible');
+      transcriptBox.classList.add('has-text');
+      transcriptText.textContent = 'Listening...';
+      responseBubble.classList.remove('visible');
+      responseBubble.classList.add('hidden');
+      shortcutsPanel.classList.remove('visible');
+      reminderPanel.classList.remove('visible');
+      notifPanel.classList.remove('visible');
+    };
+
+    recognition.onresult = (event) => {
+      let final = '', interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) final += event.results[i][0].transcript;
+        else interim += event.results[i][0].transcript;
+      }
+      transcriptText.textContent = final || interim || '...';
+      if (final) processCommand(final);
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error === 'not-allowed') {
+        status.textContent = 'MIC BLOCKED';
+        transcriptText.textContent = 'Please allow microphone access in Settings > Safari > Microphone.';
+      } else if (event.error === 'no-speech') {
+        status.textContent = 'NO SPEECH DETECTED';
+        transcriptText.textContent = 'I did not hear anything. Tap the orb to try again.';
+      } else if (event.error === 'aborted') {
+        resetState(); return;
+      } else {
+        status.textContent = 'ERROR';
+        transcriptText.textContent = 'Speech recognition error: ' + event.error + '. Tap to retry.';
+      }
+      resetState();
+    };
+
+    recognition.onend = () => {
+      isListening = false;
+      if (!isSpeaking) resetState();
+    };
+  } else {
+    status.textContent = 'VOICE NOT SUPPORTED';
+    transcriptText.textContent = 'Speech recognition unavailable. Please use Safari on iOS.';
+    core.style.cursor = 'not-allowed';
+  }
+
+  function resetState() {
+    core.classList.remove('listening', 'processing', 'speaking-glow');
+    status.classList.remove('listening', 'processing', 'speaking');
+    waveform.classList.remove('active');
+    if (!isSpeaking) { status.textContent = 'STANDBY'; micHint.classList.add('visible'); }
+  }
+
+  function typeOutText(element, text, speed) {
+    element.textContent = '';
+    element.classList.remove('hidden');
+    element.classList.add('visible');
+    let i = 0;
+    function type() {
+      if (i < text.length) {
+        element.textContent = text.substring(0, i + 1);
+        i++;
+        setTimeout(type, speed);
+      } else {
+        element.innerHTML = text + '<span class="cursor"></span>';
+      }
+    }
+    type();
+  }
+
+  function processCommand(text) {
+    const cmd = text.toLowerCase().trim();
+    core.classList.remove('listening');
+    core.classList.add('processing');
+    status.classList.remove('listening');
+    status.classList.add('processing');
+    status.textContent = 'PROCESSING';
+    waveform.classList.remove('active');
+
+    let response = '';
+    let action = null;
+
+    if (cmd.includes('remind me') || cmd.includes('set a reminder') || cmd.includes('add reminder')) {
+      let reminderText = '', timeStr = '';
+      const toMatch = cmd.match(/remind\s+me\s+to\s+(.+?)\s+(at\s+.+|in\s+\d+.+|\d+.+)/i);
+      if (toMatch) { reminderText = toMatch[1].trim(); timeStr = toMatch[2].trim(); }
+      else {
+        const aboutMatch = cmd.match(/remind\s+me\s+(?:about|of)?\s*(.+?)\s+(at\s+.+|in\s+\d+.+|\d+.+)/i);
+        if (aboutMatch) { reminderText = aboutMatch[1].trim(); timeStr = aboutMatch[2].trim(); }
+      }
+      if (reminderText && timeStr) {
+        const reminder = addReminder(reminderText, timeStr);
+        if (reminder) {
+          const t = new Date(reminder.time);
+          response = 'Reminder set, sir. Alert at ' + t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '. Task: ' + reminderText + '.';
+        } else { response = 'Unable to parse time, sir. Please retry.'; }
+      } else { response = 'Specify task and time, sir. Example: "Remind me to call mom at 3 PM."'; }
+    } else if (cmd.includes('set an alarm') || cmd.includes('add alarm') || cmd.includes('wake me up')) {
+      let timeStr = '';
+      const alarmMatch = cmd.match(/(?:at|for)\s+(.+)/i) || cmd.match(/(\d+.+)/);
+      if (alarmMatch) {
+        timeStr = alarmMatch[1].trim();
+        const reminder = addReminder('Alarm', timeStr);
+        if (reminder) {
+          const t = new Date(reminder.time);
+          response = 'Alarm set for ' + t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', sir. I will wake you.';
+        } else { response = 'Invalid time, sir. Please retry.'; }
+      } else { response = 'Specify alarm time, sir. Example: "Set alarm for 7 AM."'; }
+    } else if (cmd.includes('show reminders') || cmd.includes('list reminders') || cmd.includes('my reminders')) {
+      const active = reminders.filter(r => new Date(r.time) > new Date());
+      if (active.length === 0) { response = 'No active reminders, sir.'; }
+      else {
+        const list = active.map(r => { const t = new Date(r.time); return r.text + ' at ' + t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }).join('. ');
+        response = 'Active reminders: ' + list + '.';
+      }
+    } else if (cmd.includes('clear reminders') || cmd.includes('delete all reminders')) {
+      reminders = []; alertedReminders.clear(); saveReminders();
+      response = 'Reminders cleared, sir.';
+    } else if (cmd.includes('text') || cmd.includes('message') || cmd.includes('sms')) {
+      response = 'Opening Messages, sir.'; action = () => setTimeout(() => window.location.href = 'sms:', 1500);
+    } else if (cmd.includes('call') || cmd.includes('phone')) {
+      response = 'Opening Phone, sir.'; action = () => setTimeout(() => window.location.href = 'tel:', 1500);
+    } else if (cmd.includes('email') || cmd.includes('mail')) {
+      response = 'Opening Mail, sir.'; action = () => setTimeout(() => window.location.href = 'mailto:', 1500);
+    } else if (cmd.includes('facetime') || cmd.includes('video call')) {
+      response = 'Opening FaceTime, sir.'; action = () => setTimeout(() => window.location.href = 'facetime:', 1500);
+    } else if (cmd.includes('map') || cmd.includes('direction')) {
+      response = 'Opening Maps, sir.'; action = () => setTimeout(() => window.location.href = 'maps:', 1500);
+    } else if (cmd.includes('music') || cmd.includes('song') || cmd.includes('play music')) {
+      response = 'Opening Music, sir.'; action = () => setTimeout(() => window.location.href = 'music:', 1500);
+    } else if (cmd.includes('photo') || cmd.includes('camera roll') || cmd.includes('gallery')) {
+      response = 'Opening Photos, sir.'; action = () => setTimeout(() => window.location.href = 'photos-redirect:', 1500);
+    } else if (cmd.includes('setting') || cmd.includes('preferences')) {
+      response = 'Opening Settings, sir.'; action = () => setTimeout(() => window.location.href = 'app-settings:', 1500);
+    } else if (cmd.includes('shortcut')) {
+      response = 'Opening Shortcuts, sir.'; action = () => setTimeout(() => window.location.href = 'shortcuts://', 1500);
+    } else if (cmd.includes('open reminders') || cmd.includes('open reminder')) {
+      response = 'Opening Reminders, sir.'; action = () => setTimeout(() => window.location.href = 'x-apple-reminderkit://', 1500);
+    } else if (cmd.includes('open clock') || cmd.includes('open alarm') || cmd.includes('open timer')) {
+      response = 'Opening Clock, sir.'; action = () => setTimeout(() => window.location.href = 'clock-worldclock://', 1500);
+    } else if (cmd.includes('open safari') || cmd.includes('open browser')) {
+      response = 'Opening Safari, sir.'; action = () => setTimeout(() => window.location.href = 'x-web-search://', 1500);
+    } else if (cmd.includes('open calculator')) {
+      response = 'Opening Calculator, sir.'; action = () => setTimeout(() => window.location.href = 'calculator://', 1500);
+    } else if (cmd.includes('open calendar')) {
+      response = 'Opening Calendar, sir.'; action = () => setTimeout(() => window.location.href = 'calshow://', 1500);
+    } else if (cmd.includes('open notes')) {
+      response = 'Opening Notes, sir.'; action = () => setTimeout(() => window.location.href = 'mobilenotes://', 1500);
+    } else if (cmd.includes('open weather')) {
+      response = 'Opening Weather, sir.'; action = () => setTimeout(() => window.location.href = 'weather://', 1500);
+    } else if (cmd.includes('open app store')) {
+      response = 'Opening App Store, sir.'; action = () => setTimeout(() => window.location.href = 'itms-apps://', 1500);
+    } else if (cmd.includes('time') || cmd.includes('clock') || cmd.includes('what time')) {
+      const now = new Date(); response = 'Time is ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', sir.';
+    } else if (cmd.includes('date') || cmd.includes('day') || cmd.includes('what day')) {
+      const now = new Date(); response = 'Today is ' + now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) + ', sir.';
+    } else if (cmd.includes('hello') || cmd.includes('hi ') || cmd.includes('hey')) {
+      response = 'Hello, sir. J.A.R.V.I.S. online. Ready.';
+    } else if (cmd.includes('weather') || cmd.includes('temperature')) {
+      response = 'No atmospheric data access, sir. Check Weather app.';
+    } else if (cmd.includes('joke') || cmd.includes('funny')) {
+      const jokes = ['Why did the scarecrow win an award? Outstanding in his field.', 'Programmers prefer dark mode. Light attracts bugs.', 'I told my computer I needed a break. Now it sends Kit-Kats.', 'I would tell you a UDP joke. You might not get it.'];
+      response = jokes[Math.floor(Math.random() * jokes.length)];
+    } else if (cmd.includes('your name') || cmd.includes('who are you')) {
+      response = 'J.A.R.V.I.S. Just A Rather Very Intelligent System. At your service, sir.';
+    } else if (cmd.includes('thank')) {
+      response = 'Always a pleasure, sir.';
+    } else if (cmd.includes('goodbye') || cmd.includes('bye') || cmd.includes('sleep')) {
+      response = 'Goodbye, sir. Standing by.';
+    } else if (cmd.includes('how are you') || cmd.includes('how do you feel')) {
+      response = 'Systems optimal. Processors at 98.7 percent. All clear, sir.';
+    } else if (cmd.includes('calculate')) {
+      try {
+        const expr = cmd.replace(/[^\d\+\-\*\/\(\)\.\s]/g, '').trim();
+        if (expr) { const result = Function('"use strict"; return (' + expr + ')')(); response = 'Result: ' + result + ', sir.'; }
+        else { response = 'No valid expression detected, sir.'; }
+      } catch { response = 'Computation error, sir. Please retry.'; }
+    } else if (cmd.includes('flip a coin') || cmd.includes('coin flip')) {
+      response = Math.random() > 0.5 ? 'Heads, sir.' : 'Tails, sir.';
+    } else if (cmd.includes('roll a die') || cmd.includes('dice')) {
+      response = 'Rolled a ' + (Math.floor(Math.random() * 6) + 1) + ', sir.';
+    } else if (cmd.includes('motivation') || cmd.includes('inspire')) {
+      const quotes = ['Genius: one percent inspiration, ninety-nine percent perspiration. — Edison', 'Love what you do. — Jobs', 'Innovation distinguishes leader from follower. — Jobs', 'Best way to predict the future: create it.'];
+      response = quotes[Math.floor(Math.random() * quotes.length)];
+    } else if (cmd.includes('status') || cmd.includes('system') || cmd.includes('diagnostic')) {
+      response = 'All systems nominal. Power at 100 percent. No anomalies, sir.';
+    } else if (cmd.includes('suit') || cmd.includes('iron man') || cmd.includes('armor')) {
+      response = 'Mark suit unavailable, sir. iOS assistance active.';
+    } else if (cmd.includes('jarvis') && cmd.includes('up')) {
+      response = 'For you, sir. Always.';
+    } else if (cmd.includes('jarvis') && cmd.includes('there')) {
+      response = 'At your service, sir.';
+    } else if (cmd.includes('what can you do') || cmd.includes('help')) {
+      response = 'Reminders. Alarms. App launch. Time. Math. Coins. Dice. Jokes. Motivation. Awaiting command, sir.';
+    } else if (cmd.length < 3) {
+      response = 'Repeat, sir?';
+    } else {
+      response = 'Understood: "' + text + '". Learning. Another task, sir?';
+    }
+
+    setTimeout(() => { speak(response, action); }, 600);
+  }
+
+  function speak(text, actionFn) {
+    isSpeaking = true;
+    status.classList.remove('processing');
+    status.classList.add('speaking');
+    status.textContent = 'SPEAKING';
+    core.classList.remove('processing');
+    core.classList.add('speaking-glow');
+    triggerAudioPing();
+
+    typeOutText(responseBubble, text, 25);
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      utterance.pitch = 0.85;
+      utterance.volume = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v => v.name.includes('Daniel') || v.name.includes('Samantha') || v.name.includes('Google US English') || v.name.includes('Karen'));
+      if (preferred) utterance.voice = preferred;
+
+      utterance.onend = () => {
+        isSpeaking = false;
+        status.classList.remove('speaking');
+        status.textContent = 'STANDBY';
+        micHint.classList.add('visible');
+        core.classList.remove('speaking-glow');
+        if (actionFn) actionFn();
+      };
+      utterance.onerror = () => {
+        isSpeaking = false;
+        status.classList.remove('speaking');
+        status.textContent = 'STANDBY';
+        micHint.classList.add('visible');
+        core.classList.remove('speaking-glow');
+        if (actionFn) actionFn();
+      };
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setTimeout(() => {
+        isSpeaking = false;
+        status.classList.remove('speaking');
+        status.textContent = 'STANDBY';
+        micHint.classList.add('visible');
+        core.classList.remove('speaking-glow');
+        if (actionFn) actionFn();
+      }, 3000);
+    }
+  }
+
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.getVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+    }
+  }
+
+  function startListening() {
+    if (!recognition || isListening || isSpeaking) return;
+    try { recognition.start(); } catch (e) {}
+  }
+
+  core.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); startListening(); });
+  core.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); core.classList.add('active-tap'); startListening(); }, { passive: false });
+  core.addEventListener('touchend', (e) => { e.preventDefault(); core.classList.remove('active-tap'); });
+  core.addEventListener('touchcancel', (e) => { core.classList.remove('active-tap'); });
+
+  setTimeout(() => { if (!isListening && !isSpeaking) micHint.classList.add('visible'); }, 1500);
+})();
+</script>
+</body>
+</html>
